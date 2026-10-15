@@ -1,7 +1,7 @@
 {
-  "version": "1.0.4",
-  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/download/v1.0.4/NVR%20Assistant.exe",
-  "notes": "v1.0.4：自动更新改为直接下载 NVR Assistant.exe，并在退出后原地替换当前程序。",
+  "version": "1.0.5",
+  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/download/v1.0.5/NVRAssistant.exe",
+  "notes": "v1.0.5：发行文件统一为 NVRAssistant.exe；设置页新增作者 QQ 与邮箱一键复制功能；v1.0.4 可直接更新到本版本。",
   "published_at": "2026-10-15",
-  "sha256": "b1025ac102486beca38e84ce94ac2c24c964ce302e7f6a273813ffbe650c3ec3"
+  "sha256": "c2708bebce27a9ad0135247ff6bfdfaf7084918af38694508604b53faed76512"
 }

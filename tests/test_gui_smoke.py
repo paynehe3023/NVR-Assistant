@@ -38,6 +38,27 @@ class GuiSmokeTests(unittest.TestCase):
         self.assertEqual(page._collect_camera_ips(), ["10.0.0.10", "10.0.0.11"])
         window.close()
 
+    def test_settings_contact_fields_copy_to_clipboard(self):
+        from nvr_app.ui.main_window import MainWindow
+
+        window = MainWindow()
+        page = window.settings_page
+
+        self.assertEqual(page.contact_qq_edit.text(), "947919822")
+        self.assertEqual(page.contact_email_edit.text(), "paynehee@163.com")
+
+        page.copy_qq_button.click()
+        self.app.processEvents()
+        self.assertEqual(self.app.clipboard().text(), "947919822")
+        self.assertFalse(page.contact_copy_status.isHidden())
+        self.assertEqual(page.contact_copy_status.text(), "QQ 已复制")
+
+        page.copy_email_button.click()
+        self.app.processEvents()
+        self.assertEqual(self.app.clipboard().text(), "paynehee@163.com")
+        self.assertEqual(page.contact_copy_status.text(), "邮箱已复制")
+        window.close()
+
     def test_lookup_manual_layout_has_room_for_ips(self):
         from nvr_app.ui.main_window import MainWindow
 

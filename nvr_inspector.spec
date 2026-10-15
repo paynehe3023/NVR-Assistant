@@ -91,7 +91,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="NVR Assistant",
+    name="NVRAssistant",
     debug=False,
     icon=icon_path,
     bootloader_ignore_signals=False,

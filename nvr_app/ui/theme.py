@@ -60,6 +60,10 @@ QLabel#SectionTitle {
 QLabel#PageHint, QLabel#MutedLabel {
     color: #607587;
 }
+QLabel#SuccessLabel {
+    color: #246B45;
+    font-weight: 600;
+}
 QLabel#SummaryValue {
     color: #1F5E83;
     font-size: 18px;

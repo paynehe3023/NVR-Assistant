@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -42,6 +43,10 @@ from nvr_app.updater import (
 from nvr_app.workers import ServiceTask
 
 
+CONTACT_QQ = "947919822"
+CONTACT_EMAIL = "paynehee@163.com"
+
+
 class SettingsPage(QWidget):
     settings_saved = Signal()
     log_message = Signal(str, str)
@@ -57,7 +62,18 @@ class SettingsPage(QWidget):
         self.refresh_settings()
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("SettingsScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content = QWidget()
+        content.setObjectName("SettingsContent")
+
+        root = QVBoxLayout(content)
         root.setContentsMargins(18, 18, 18, 12)
         root.setSpacing(12)
 
@@ -158,6 +174,51 @@ class SettingsPage(QWidget):
         update_layout.addLayout(update_buttons)
         root.addWidget(update_panel)
 
+        contact_panel = QFrame()
+        contact_panel.setObjectName("PageHeader")
+        contact_layout = QVBoxLayout(contact_panel)
+        contact_layout.setContentsMargins(18, 16, 18, 16)
+        contact_layout.setSpacing(8)
+
+        contact_title = QLabel("联系作者")
+        contact_title.setObjectName("SectionTitle")
+        contact_layout.addWidget(contact_title)
+
+        contact_form = QFormLayout()
+        contact_form.setHorizontalSpacing(14)
+        contact_form.setVerticalSpacing(8)
+
+        self.contact_qq_edit = QLineEdit(CONTACT_QQ)
+        self.contact_qq_edit.setReadOnly(True)
+        self.copy_qq_button = QPushButton("复制")
+        self.copy_qq_button.setToolTip("复制作者 QQ")
+        self.copy_qq_button.clicked.connect(
+            lambda: self._copy_contact(CONTACT_QQ, "QQ 已复制")
+        )
+        qq_row = QHBoxLayout()
+        qq_row.addWidget(self.contact_qq_edit, 1)
+        qq_row.addWidget(self.copy_qq_button)
+        contact_form.addRow("QQ", qq_row)
+
+        self.contact_email_edit = QLineEdit(CONTACT_EMAIL)
+        self.contact_email_edit.setReadOnly(True)
+        self.copy_email_button = QPushButton("复制")
+        self.copy_email_button.setToolTip("复制作者邮箱")
+        self.copy_email_button.clicked.connect(
+            lambda: self._copy_contact(CONTACT_EMAIL, "邮箱已复制")
+        )
+        email_row = QHBoxLayout()
+        email_row.addWidget(self.contact_email_edit, 1)
+        email_row.addWidget(self.copy_email_button)
+        contact_form.addRow("邮箱", email_row)
+        contact_layout.addLayout(contact_form)
+
+        self.contact_copy_status = QLabel("")
+        self.contact_copy_status.setObjectName("SuccessLabel")
+        self.contact_copy_status.hide()
+        contact_layout.addWidget(self.contact_copy_status)
+        root.addWidget(contact_panel)
+
         info_panel = QFrame()
         info_panel.setObjectName("PageHeader")
         info_layout = QVBoxLayout(info_panel)
@@ -169,6 +230,9 @@ class SettingsPage(QWidget):
         info_layout.addStretch(1)
         root.addWidget(info_panel)
         root.addStretch(1)
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
 
     def refresh_settings(self) -> None:
         self.output_edit.setText(
@@ -185,6 +249,23 @@ class SettingsPage(QWidget):
         )
         if path:
             self.output_edit.setText(path)
+
+    def _copy_contact(self, value: str, success_message: str) -> None:
+        QApplication.clipboard().setText(value)
+        self.contact_copy_status.setText(success_message)
+        self.contact_copy_status.show()
+        self.log_message.emit(success_message, "success")
+        QTimer.singleShot(
+            1800,
+            lambda expected=success_message: self._clear_copy_feedback(
+                expected
+            ),
+        )
+
+    def _clear_copy_feedback(self, expected_message: str) -> None:
+        if self.contact_copy_status.text() == expected_message:
+            self.contact_copy_status.clear()
+            self.contact_copy_status.hide()
 
     def _save(self) -> None:
         set_string("general/output_dir", self.output_edit.text().strip())

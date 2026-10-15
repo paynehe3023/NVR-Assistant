@@ -22,19 +22,20 @@ ISAPI 实时读取设备数据，支持批量巡检 NVR 通道，也可以从摄
 - 支持并发查询、超时设置、任务取消、进度显示、运行日志和异常分类。
 - 支持导出 CSV 与 XLSX；导出的结果不包含 NVR 登录密码。
 - 设置页支持检查更新、直接下载 EXE、SHA256 校验和自动替换当前单文件 EXE。
+- 设置页提供作者 QQ 与邮箱，可一键复制并显示复制成功提示。
 - `v1.0.2` 起使用程序内置更新器，不再依赖独立的 `NVRUpdater.exe`。
 
 ## 便携版使用
 
-1. 下载 Release 中的 `NVR Assistant.exe`。
-2. 将 `NVR Assistant.exe` 放到任意可写目录。
-3. 运行 `NVR Assistant.exe`。
-4. `NVR Assistant.exe` 可以单独复制到桌面使用，不需要保留所在文件夹，
+1. 下载 Release 中的 `NVRAssistant.exe`。
+2. 将 `NVRAssistant.exe` 放到任意可写目录。
+3. 运行 `NVRAssistant.exe`。
+4. `NVRAssistant.exe` 可以单独复制到桌面使用，不需要保留所在文件夹，
    也不需要 `_internal` 目录。
 
-从 `v1.0.2` 或更早版本升级时，需要手动下载一次 `v1.0.4` 的
-`NVR Assistant.exe` 并替换旧程序。旧版更新器只接受 ZIP，无法直接安装 EXE。
-完成这次手动替换后，后续版本可由程序内置更新器直接下载并替换 EXE。
+从 `v1.0.2` 或更早版本升级时，需要手动下载一次 `v1.0.4` 的程序并替换旧版本。
+旧版更新器只接受 ZIP，无法直接安装 EXE。运行 `v1.0.4` 后，可直接在设置页
+下载并安装 `v1.0.5`，更新器会按当前运行文件名原地替换 EXE。
 
 首次使用建议：
 
@@ -96,12 +97,12 @@ pip install -r requirements-build.txt
 构建结果：
 
 ```text
-dist\NVR Assistant.exe
-dist\NVR Assistant.exe.sha256
+dist\NVRAssistant.exe
+dist\NVRAssistant.exe.sha256
 ```
 
 程序采用 PyInstaller 单文件结构。安装更新时，内置更新器会等待主程序退出，
-然后直接用下载并校验过的 `NVR Assistant.exe` 替换当前单文件 EXE，不会修改
+然后直接用下载并校验过的 `NVRAssistant.exe` 替换当前单文件 EXE，不会修改
 同目录中的其他文件，因此不需要 `NVRUpdater.exe`。
 
 ## 更新与发布流程
@@ -115,22 +116,22 @@ Releases API。发布新版本时按以下顺序操作：
 4. 将 EXE 的 SHA256 写入 `version.json`。
 5. 提交并推送 `main`。
 6. 创建对应版本标签和 GitHub Release。
-7. 上传 `NVR Assistant.exe`，文件名必须与 `version.json` 中的
+7. 上传 `NVRAssistant.exe`，文件名必须与 `version.json` 中的
    `download_url` 完全一致。
 
 `version.json` 示例：
 
 ```json
 {
-  "version": "1.0.4",
-  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/download/v1.0.4/NVR%20Assistant.exe",
-  "notes": "v1.0.4：自动更新改为直接下载 NVR Assistant.exe。",
+  "version": "1.0.5",
+  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/download/v1.0.5/NVRAssistant.exe",
+  "notes": "v1.0.5：统一使用 NVRAssistant.exe，并增加作者联系方式复制功能。",
   "published_at": "2026-10-15",
   "sha256": "填写 EXE 的 SHA256"
 }
 ```
 
-更新程序包含在 `NVR Assistant.exe` 内。下载完成后，主程序会启动一个临时
+更新程序包含在 `NVRAssistant.exe` 内。下载完成后，主程序会启动一个临时
 自更新副本，等待原程序退出后替换当前单文件 EXE 并自动重启。
 
 当前 `version.json` 中的 `sha256` 如果为空，程序仍会检查 EXE 文件头，但不会
@@ -146,6 +147,9 @@ Releases API。发布新版本时按以下顺序操作：
 ## 作者
 
 payne
+
+- QQ：`947919822`
+- 邮箱：`paynehee@163.com`
 
 ## 许可证
 
