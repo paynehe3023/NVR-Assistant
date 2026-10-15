@@ -88,8 +88,9 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name="NVR Assistant",
     debug=False,
     icon=icon_path,
@@ -103,15 +104,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version=version_info_path,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    name="NVR Assistant",
 )
 

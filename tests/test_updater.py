@@ -61,12 +61,14 @@ class UpdaterTests(unittest.TestCase):
                 check_for_update("1.0.1", manifest.as_uri())
             )
 
-    def test_apply_update_replaces_bundle_without_standalone_updater(self):
+    def test_apply_update_replaces_legacy_onedir_bundle(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / "NVR Assistant"
             target.mkdir()
             (target / "NVR Assistant.exe").write_bytes(b"old")
+            (target / "_internal").mkdir()
+            (target / "_internal" / "old.dll").write_bytes(b"old")
             (target / "old.txt").write_text("old", encoding="utf-8")
 
             payload = root / "payload"
@@ -74,36 +76,113 @@ class UpdaterTests(unittest.TestCase):
             (payload / "NVR Assistant" / "NVR Assistant.exe").write_bytes(
                 b"new"
             )
+            (payload / "NVR Assistant" / "_internal").mkdir()
+            (payload / "NVR Assistant" / "_internal" / "new.dll").write_bytes(
+                b"new"
+            )
             (payload / "NVR Assistant" / "new.txt").write_text(
                 "new",
                 encoding="utf-8",
             )
             archive = root / "update.zip"
+            payload_root = payload / "NVR Assistant"
             with ZipFile(archive, "w") as zip_file:
-                for file_path in (payload / "NVR Assistant").iterdir():
+                for file_path in payload_root.rglob("*"):
+                    if not file_path.is_file():
+                        continue
                     zip_file.write(
                         file_path,
                         (
-                            Path("NVR Assistant") / file_path.name
+                            Path("NVR Assistant")
+                            / file_path.relative_to(payload_root)
                         ).as_posix(),
                     )
 
-            apply_update(archive, target, parent_pid=0, restart=False)
+            apply_update(
+                archive,
+                target,
+                parent_pid=0,
+                restart=False,
+                mode="onedir",
+            )
 
             self.assertEqual(
                 (target / "NVR Assistant.exe").read_bytes(),
                 b"new",
             )
             self.assertTrue((target / "new.txt").is_file())
+            self.assertTrue((target / "_internal" / "new.dll").is_file())
+            self.assertFalse((target / "_internal" / "old.dll").exists())
             self.assertFalse((target / "old.txt").exists())
             self.assertFalse((target / "NVRUpdater.exe").exists())
 
-    def test_prepare_update_runner_copies_main_bundle(self):
+    def test_apply_update_replaces_only_onefile_executable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "Desktop"
+            target.mkdir()
+            target_exe = target / "NVR Assistant.exe"
+            target_exe.write_bytes(b"old")
+            (target / "user-notes.txt").write_text(
+                "keep",
+                encoding="utf-8",
+            )
+
+            archive = root / "update.zip"
+            with ZipFile(archive, "w") as zip_file:
+                zip_file.writestr("NVR Assistant.exe", b"new")
+                zip_file.writestr("README.txt", b"do not install")
+                zip_file.writestr("_internal/runtime.dll", b"do not install")
+
+            apply_update(
+                archive,
+                target,
+                parent_pid=0,
+                restart=False,
+                mode="onefile",
+            )
+
+            self.assertEqual(target_exe.read_bytes(), b"new")
+            self.assertEqual(
+                (target / "user-notes.txt").read_text(encoding="utf-8"),
+                "keep",
+            )
+            self.assertFalse((target / "README.txt").exists())
+            self.assertFalse((target / "_internal").exists())
+            self.assertFalse((target / "NVRUpdater.exe").exists())
+
+    def test_apply_update_finds_onefile_executable_in_subdirectory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "Tools"
+            target.mkdir()
+            target_exe = target / "NVR Assistant.exe"
+            target_exe.write_bytes(b"old")
+
+            archive = root / "update.zip"
+            with ZipFile(archive, "w") as zip_file:
+                zip_file.writestr(
+                    "release/NVR Assistant.exe",
+                    b"new",
+                )
+
+            apply_update(
+                archive,
+                target,
+                parent_pid=0,
+                restart=False,
+                mode="onefile",
+            )
+
+            self.assertEqual(target_exe.read_bytes(), b"new")
+
+    def test_prepare_update_runner_copies_legacy_onedir_bundle(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             target = root / "NVR Assistant"
             target.mkdir()
             (target / "NVR Assistant.exe").write_bytes(b"app")
+            (target / "_internal").mkdir()
 
             current_exe = root / "current.exe"
             current_exe.write_bytes(b"runner")
@@ -122,7 +201,7 @@ class UpdaterTests(unittest.TestCase):
                     create=True,
                 ),
             ):
-                runner = prepare_update_runner(target)
+                runner = prepare_update_runner(target, "onedir")
 
             self.assertEqual(runner.read_bytes(), b"runner")
             self.assertEqual(
@@ -133,6 +212,34 @@ class UpdaterTests(unittest.TestCase):
                 (runner.parent / "_internal" / "nested" / "data.bin")
                 .is_file()
             )
+
+    def test_prepare_onefile_update_runner_copies_only_executable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "Desktop"
+            target.mkdir()
+            (target / "NVR Assistant.exe").write_bytes(b"app")
+
+            current_exe = root / "current.exe"
+            current_exe.write_bytes(b"runner")
+            extracted_runtime = root / "_MEI12345"
+            extracted_runtime.mkdir()
+            (extracted_runtime / "runtime.dll").write_bytes(b"runtime")
+
+            with (
+                patch.object(sys, "executable", str(current_exe)),
+                patch.object(
+                    sys,
+                    "_MEIPASS",
+                    str(extracted_runtime),
+                    create=True,
+                ),
+            ):
+                runner = prepare_update_runner(target, "onefile")
+
+            self.assertEqual(runner.read_bytes(), b"runner")
+            self.assertFalse((runner.parent / "_internal").exists())
+            self.assertFalse((runner.parent / "runtime.dll").exists())
 
     def test_launch_update_uses_temporary_main_copy(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -157,12 +264,13 @@ class UpdaterTests(unittest.TestCase):
                 result = launch_update(archive)
 
             self.assertEqual(result, runner)
-            prepare_mock.assert_called_once_with(target)
+            prepare_mock.assert_called_once_with(target, "onefile")
             command = popen_mock.call_args.args[0]
             self.assertEqual(command[0], str(runner))
             self.assertEqual(command[1], "--apply-update")
             self.assertEqual(command[2], str(archive))
             self.assertEqual(command[3], str(target))
+            self.assertEqual(command[-1], "onefile")
             self.assertNotIn("NVRUpdater.exe", " ".join(command))
 
     def test_cleanup_update_runners_removes_only_runner_dirs(self):

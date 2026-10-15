@@ -30,6 +30,8 @@ USER_AGENT = "nvr-assistant-updater"
 HTTP_TIMEOUT = 20
 CHUNK_SIZE = 256 * 1024
 APP_EXE_NAME = "NVR Assistant.exe"
+UPDATE_MODE_ONEFILE = "onefile"
+UPDATE_MODE_ONEDIR = "onedir"
 
 
 class UpdateError(RuntimeError):
@@ -326,6 +328,33 @@ def _safe_extract(archive_path: Path, destination: Path) -> None:
         raise UpdateError(f"解压更新包失败: {exc}") from exc
 
 
+def _normalize_update_mode(mode: str | None) -> str:
+    if mode in (None, ""):
+        return ""
+    value = str(mode).strip().lower()
+    if value not in (UPDATE_MODE_ONEFILE, UPDATE_MODE_ONEDIR):
+        raise UpdateError(f"无效更新模式: {mode}")
+    return value
+
+
+def _detect_update_mode(target_dir: Path) -> str:
+    target_dir = Path(target_dir).resolve()
+    if getattr(sys, "frozen", False):
+        bundle_root = getattr(sys, "_MEIPASS", None)
+        if bundle_root:
+            try:
+                if Path(bundle_root).resolve() == (
+                    target_dir / "_internal"
+                ).resolve():
+                    return UPDATE_MODE_ONEDIR
+                return UPDATE_MODE_ONEFILE
+            except OSError:
+                pass
+    if (target_dir / "_internal").is_dir():
+        return UPDATE_MODE_ONEDIR
+    return UPDATE_MODE_ONEFILE
+
+
 def _find_payload_root(extracted_dir: Path) -> Path:
     candidates = [extracted_dir]
     candidates.extend(
@@ -337,6 +366,32 @@ def _find_payload_root(extracted_dir: Path) -> Path:
         if (candidate / APP_EXE_NAME).is_file():
             return candidate
     raise UpdateError(f"更新包中找不到 {APP_EXE_NAME}")
+
+
+def _replace_file(source: Path, target: Path, token: str) -> None:
+    source = source.resolve()
+    target = target.resolve()
+    if not target.is_file():
+        raise UpdateError(f"当前程序文件不存在: {target}")
+
+    backup = target.with_name(f".{target.name}.backup-{token}")
+    if backup.exists():
+        backup.unlink()
+
+    moved_target = False
+    try:
+        os.replace(target, backup)
+        moved_target = True
+        os.replace(source, target)
+    except OSError as exc:
+        if moved_target and not target.exists() and backup.exists():
+            os.replace(backup, target)
+        raise UpdateError(f"替换程序文件失败: {exc}") from exc
+
+    try:
+        backup.unlink()
+    except OSError:
+        pass
 
 
 def _replace_directory(source: Path, target: Path, token: str) -> None:
@@ -397,13 +452,18 @@ def apply_update(
     target_dir: Path,
     parent_pid: int,
     restart: bool,
+    mode: str | None = None,
 ) -> None:
     """Install a verified ZIP after the parent process has exited."""
     archive_path = Path(archive_path).resolve()
     target_dir = Path(target_dir).resolve()
+    update_mode = _normalize_update_mode(mode) or _detect_update_mode(
+        target_dir
+    )
     if not archive_path.is_file():
         raise UpdateError("更新包不存在")
-    if not (target_dir / APP_EXE_NAME).is_file():
+    target_exe = target_dir / APP_EXE_NAME
+    if not target_exe.is_file():
         raise UpdateError(f"目标目录中没有 {APP_EXE_NAME}")
 
     token = uuid.uuid4().hex
@@ -416,14 +476,17 @@ def apply_update(
         _wait_for_process_exit(parent_pid)
         _safe_extract(archive_path, staging)
         payload = _find_payload_root(staging)
-        _replace_directory(payload, target_dir, token)
+        if update_mode == UPDATE_MODE_ONEFILE:
+            _replace_file(payload / APP_EXE_NAME, target_exe, token)
+        else:
+            _replace_directory(payload, target_dir, token)
     finally:
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
 
     if restart:
         subprocess.Popen(
-            [str(target_dir / APP_EXE_NAME)],
+            [str(target_exe)],
             cwd=str(target_dir),
             close_fds=True,
             creationflags=_creation_flags(),
@@ -448,13 +511,16 @@ def cleanup_update_runners(target_dir: Path) -> None:
             shutil.rmtree(root, ignore_errors=True)
 
 
-def prepare_update_runner(target_dir: Path) -> Path:
-    """Copy this executable and its bundle into a temporary runner directory."""
+def prepare_update_runner(
+    target_dir: Path,
+    mode: str | None = None,
+) -> Path:
+    """Copy the executable needed to install an update after restart."""
     target_dir = Path(target_dir).resolve()
+    update_mode = _normalize_update_mode(mode) or _detect_update_mode(
+        target_dir
+    )
     current_exe = Path(sys.executable).resolve()
-    internal_dir = Path(
-        getattr(sys, "_MEIPASS", current_exe.parent / "_internal")
-    ).resolve()
 
     cleanup_update_runners(target_dir)
     runner_root = (
@@ -472,7 +538,12 @@ def prepare_update_runner(target_dir: Path) -> Path:
     try:
         runner_exe = runner_root / APP_EXE_NAME
         shutil.copy2(current_exe, runner_exe)
-        if internal_dir.is_dir():
+        if update_mode == UPDATE_MODE_ONEDIR:
+            internal_dir = Path(
+                getattr(sys, "_MEIPASS", current_exe.parent / "_internal")
+            ).resolve()
+            if not internal_dir.is_dir():
+                raise UpdateError("当前版本缺少 onedir 运行文件")
             shutil.copytree(
                 internal_dir,
                 runner_root / "_internal",
@@ -487,7 +558,7 @@ def prepare_update_runner(target_dir: Path) -> Path:
 def run_update_helper(argv: list[str] | None = None) -> int:
     """Run the built-in installer mode used by the temporary self-copy."""
     args = list(sys.argv if argv is None else argv)
-    if len(args) != 6 or args[1] != "--apply-update":
+    if len(args) not in (6, 7) or args[1] != "--apply-update":
         return 2
 
     try:
@@ -495,7 +566,8 @@ def run_update_helper(argv: list[str] | None = None) -> int:
         target_dir = Path(args[3])
         parent_pid = int(args[4])
         restart = args[5] == "--restart"
-        apply_update(archive_path, target_dir, parent_pid, restart)
+        mode = args[6] if len(args) == 7 else None
+        apply_update(archive_path, target_dir, parent_pid, restart, mode)
         _write_update_log("内置更新完成")
         return 0
     except Exception as exc:
@@ -519,7 +591,8 @@ def launch_update(downloaded_archive: Path) -> Path | None:
             raise UpdateError(f"无法打开更新目录: {exc}") from exc
 
     target_dir = Path(sys.executable).resolve().parent
-    runner = prepare_update_runner(target_dir)
+    mode = _detect_update_mode(target_dir)
+    runner = prepare_update_runner(target_dir, mode)
 
     try:
         subprocess.Popen(
@@ -530,6 +603,7 @@ def launch_update(downloaded_archive: Path) -> Path | None:
                 str(target_dir),
                 str(os.getpid()),
                 "--restart",
+                mode,
             ],
             cwd=str(runner.parent),
             close_fds=True,

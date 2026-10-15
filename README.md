@@ -10,7 +10,7 @@ NVR Assistant 是一个面向海康威视 NVR 与摄像头的本地桌面工具�
 ISAPI 实时读取设备数据，支持批量巡检 NVR 通道，也可以从摄像头 IP 反向定位
 所属 NVR、通道号和通道名称。
 
-项目使用 Python 与 PySide6 开发，发布形式为 Windows `onedir` 便携包。程序不
+项目使用 Python 与 PySide6 开发，发布形式为 Windows 单文件便携 EXE。程序不
 依赖服务器，不上传设备清单，也不内置任何 NVR 或摄像头凭据。
 
 ## 主要功能
@@ -21,15 +21,16 @@ ISAPI 实时读取设备数据，支持批量巡检 NVR 通道，也可以从摄
 - NVR 名称优先从设备接口读取；状态接口失败与设备离线会分别展示。
 - 支持并发查询、超时设置、任务取消、进度显示、运行日志和异常分类。
 - 支持导出 CSV 与 XLSX；导出的结果不包含 NVR 登录密码。
-- 设置页支持检查更新、下载 ZIP、SHA256 校验和自动替换便携目录。
+- 设置页支持检查更新、下载 ZIP、SHA256 校验和自动替换当前单文件 EXE。
 - `v1.0.2` 起使用程序内置更新器，不再依赖独立的 `NVRUpdater.exe`。
 
 ## 便携版使用
 
 1. 下载 Release 中的 `NVRAssistant-windows-x64.zip`。
-2. 解压到可写目录，例如 `D:\Tools\NVR Assistant`。
+2. 解压后将 `NVR Assistant.exe` 放到任意可写目录。
 3. 运行 `NVR Assistant.exe`。
-4. 不要只复制单个 EXE；程序是 `onedir` 结构，需要保留完整目录。
+4. `NVR Assistant.exe` 可以单独复制到桌面使用，不需要保留所在文件夹，
+   也不需要 `_internal` 目录。
 
 首次使用建议：
 
@@ -91,14 +92,14 @@ pip install -r requirements-build.txt
 构建结果：
 
 ```text
-dist\NVR Assistant\NVR Assistant.exe
+dist\NVR Assistant.exe
 dist\NVRAssistant-windows-x64.zip
 dist\NVRAssistant-windows-x64.zip.sha256
 ```
 
-程序采用 PyInstaller `--onedir` 结构。更新时不能只替换主 EXE，应替换完整目录。
-安装更新时，主程序会把当前版本复制到临时目录，退出后由该临时副本下载并替换
-完整便携目录，因此不需要 `NVRUpdater.exe`。
+程序采用 PyInstaller 单文件结构。安装更新时，主程序会把当前 EXE 复制到临时目录，
+退出后由该临时副本下载并替换当前单文件 EXE，不会修改同目录中的其他文件，
+因此不需要 `NVRUpdater.exe`。
 为兼容 `v1.0.0` 的旧更新助手，便携包内会保留一个 `NVRInspector.exe`
 兼容启动副本；日常使用和后续版本统一以 `NVR Assistant.exe` 为入口。
 
@@ -120,16 +121,16 @@ Releases API。发布新版本时按以下顺序操作：
 
 ```json
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/latest/download/NVRAssistant-windows-x64.zip",
-  "notes": "v1.0.2：自动更新改为程序内置，不再依赖 NVRUpdater.exe。",
-  "published_at": "2026-10-16",
+  "notes": "v1.0.3：改为单文件 EXE，可脱离文件夹独立运行。",
+  "published_at": "2026-10-15",
   "sha256": "填写 ZIP 的 SHA256"
 }
 ```
 
-`v1.0.2` 的更新程序包含在 `NVR Assistant.exe` 内。下载完成后，主程序会启动一个
-临时自更新副本，等待原程序退出后替换整个便携目录并自动重启。
+更新程序包含在 `NVR Assistant.exe` 内。下载完成后，主程序会启动一个临时
+自更新副本，等待原程序退出后替换当前单文件 EXE 并自动重启。
 
 当前 `version.json` 中的 `sha256` 如果为空，程序仍会下载 ZIP 并执行 ZIP 完整性
 检查，但不会进行固定哈希校验。正式发布建议始终填写 SHA256。
