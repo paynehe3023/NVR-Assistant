@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -25,6 +29,7 @@ RELEASE_API_URL = (
 USER_AGENT = "nvr-assistant-updater"
 HTTP_TIMEOUT = 20
 CHUNK_SIZE = 256 * 1024
+APP_EXE_NAME = "NVR Assistant.exe"
 
 
 class UpdateError(RuntimeError):
@@ -286,8 +291,221 @@ def _creation_flags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def _wait_for_process_exit(pid: int, timeout: float = 90.0) -> None:
+    if os.name != "nt" or pid <= 0:
+        return
+    synchronize = 0x00100000
+    wait_timeout = 0x00000102
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(synchronize, False, pid)
+    if not handle:
+        return
+    try:
+        result = kernel32.WaitForSingleObject(handle, int(timeout * 1000))
+        if result == wait_timeout:
+            raise UpdateError("等待原程序退出超时，请关闭程序后再次更新")
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _safe_extract(archive_path: Path, destination: Path) -> None:
+    destination = destination.resolve()
+    try:
+        with ZipFile(archive_path) as archive:
+            for member in archive.infolist():
+                member_path = (destination / member.filename).resolve()
+                if (
+                    member_path != destination
+                    and destination not in member_path.parents
+                ):
+                    raise UpdateError("更新包包含非法路径")
+            archive.extractall(destination)
+    except BadZipFile as exc:
+        raise UpdateError("更新包不是有效的 ZIP 文件") from exc
+    except OSError as exc:
+        raise UpdateError(f"解压更新包失败: {exc}") from exc
+
+
+def _find_payload_root(extracted_dir: Path) -> Path:
+    candidates = [extracted_dir]
+    candidates.extend(
+        child
+        for child in extracted_dir.iterdir()
+        if child.is_dir()
+    )
+    for candidate in candidates:
+        if (candidate / APP_EXE_NAME).is_file():
+            return candidate
+    raise UpdateError(f"更新包中找不到 {APP_EXE_NAME}")
+
+
+def _replace_directory(source: Path, target: Path, token: str) -> None:
+    source = source.resolve()
+    target = target.resolve()
+    if not target.is_dir():
+        raise UpdateError(f"当前程序目录不存在: {target}")
+
+    backup = target.with_name(f".{target.name}.backup-{token}")
+    if backup.exists():
+        shutil.rmtree(backup)
+
+    moved_target = False
+    try:
+        os.replace(target, backup)
+        moved_target = True
+        os.replace(source, target)
+    except OSError as exc:
+        if moved_target and not target.exists() and backup.exists():
+            os.replace(backup, target)
+        raise UpdateError(f"替换程序目录失败: {exc}") from exc
+
+    try:
+        shutil.rmtree(backup)
+    except OSError:
+        pass
+
+
+def _write_update_log(message: str) -> None:
+    base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+    log_dir = Path(base) / "NVRAssistant" / "updates"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with (log_dir / "update.log").open("a", encoding="utf-8") as output:
+            output.write(
+                f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n"
+            )
+    except OSError:
+        pass
+
+
+def _show_update_error(message: str) -> None:
+    if os.name != "nt":
+        return
+    try:
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            message,
+            "NVR Assistant 更新失败",
+            0x00000010,
+        )
+    except (AttributeError, OSError):
+        pass
+
+
+def apply_update(
+    archive_path: Path,
+    target_dir: Path,
+    parent_pid: int,
+    restart: bool,
+) -> None:
+    """Install a verified ZIP after the parent process has exited."""
+    archive_path = Path(archive_path).resolve()
+    target_dir = Path(target_dir).resolve()
+    if not archive_path.is_file():
+        raise UpdateError("更新包不存在")
+    if not (target_dir / APP_EXE_NAME).is_file():
+        raise UpdateError(f"目标目录中没有 {APP_EXE_NAME}")
+
+    token = uuid.uuid4().hex
+    staging = target_dir.parent / f".{target_dir.name}.update-{token}"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+
+    try:
+        _wait_for_process_exit(parent_pid)
+        _safe_extract(archive_path, staging)
+        payload = _find_payload_root(staging)
+        _replace_directory(payload, target_dir, token)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+    if restart:
+        subprocess.Popen(
+            [str(target_dir / APP_EXE_NAME)],
+            cwd=str(target_dir),
+            close_fds=True,
+            creationflags=_creation_flags(),
+        )
+
+
+def _link_or_copy(source: str, destination: str) -> str:
+    try:
+        os.link(source, destination)
+        return destination
+    except OSError:
+        return shutil.copy2(source, destination)
+
+
+def cleanup_update_runners(target_dir: Path) -> None:
+    """Remove temporary self-update copies left by previous updates."""
+    target_dir = Path(target_dir).resolve()
+    for root in target_dir.parent.glob(
+        f".{target_dir.name}.runner-*"
+    ):
+        if root.is_dir():
+            shutil.rmtree(root, ignore_errors=True)
+
+
+def prepare_update_runner(target_dir: Path) -> Path:
+    """Copy this executable and its bundle into a temporary runner directory."""
+    target_dir = Path(target_dir).resolve()
+    current_exe = Path(sys.executable).resolve()
+    internal_dir = Path(
+        getattr(sys, "_MEIPASS", current_exe.parent / "_internal")
+    ).resolve()
+
+    cleanup_update_runners(target_dir)
+    runner_root = (
+        target_dir.parent
+        / f".{target_dir.name}.runner-{uuid.uuid4().hex}"
+    )
+    try:
+        runner_root.mkdir(parents=True)
+    except OSError:
+        runner_root = _update_dir() / (
+            f"{target_dir.name}.runner-{uuid.uuid4().hex}"
+        )
+        runner_root.mkdir(parents=True)
+
+    try:
+        runner_exe = runner_root / APP_EXE_NAME
+        shutil.copy2(current_exe, runner_exe)
+        if internal_dir.is_dir():
+            shutil.copytree(
+                internal_dir,
+                runner_root / "_internal",
+                copy_function=_link_or_copy,
+            )
+        return runner_exe
+    except OSError as exc:
+        shutil.rmtree(runner_root, ignore_errors=True)
+        raise UpdateError(f"无法创建内置更新副本: {exc}") from exc
+
+
+def run_update_helper(argv: list[str] | None = None) -> int:
+    """Run the built-in installer mode used by the temporary self-copy."""
+    args = list(sys.argv if argv is None else argv)
+    if len(args) != 6 or args[1] != "--apply-update":
+        return 2
+
+    try:
+        archive_path = Path(args[2])
+        target_dir = Path(args[3])
+        parent_pid = int(args[4])
+        restart = args[5] == "--restart"
+        apply_update(archive_path, target_dir, parent_pid, restart)
+        _write_update_log("内置更新完成")
+        return 0
+    except Exception as exc:
+        _write_update_log(f"内置更新失败: {exc}")
+        _show_update_error(str(exc))
+        return 1
+
+
 def launch_update(downloaded_archive: Path) -> Path | None:
-    """Start NVRUpdater.exe after the current process exits."""
+    """Start a temporary self-copy that installs the update after exit."""
     archive = Path(downloaded_archive).resolve()
     if not archive.is_file():
         raise UpdateError("更新包不存在，请重新下载")
@@ -301,26 +519,23 @@ def launch_update(downloaded_archive: Path) -> Path | None:
             raise UpdateError(f"无法打开更新目录: {exc}") from exc
 
     target_dir = Path(sys.executable).resolve().parent
-    helper = target_dir / "NVRUpdater.exe"
-    if not helper.is_file():
-        raise UpdateError(
-            "缺少 NVRUpdater.exe，无法自动安装。请联系维护者获取完整便携包。"
-        )
+    runner = prepare_update_runner(target_dir)
 
     try:
         subprocess.Popen(
             [
-                str(helper),
+                str(runner),
                 "--apply-update",
                 str(archive),
                 str(target_dir),
                 str(os.getpid()),
                 "--restart",
             ],
-            cwd=str(target_dir),
+            cwd=str(runner.parent),
             close_fds=True,
             creationflags=_creation_flags(),
         )
     except OSError as exc:
-        raise UpdateError(f"无法启动更新助手: {exc}") from exc
-    return helper
+        shutil.rmtree(runner.parent, ignore_errors=True)
+        raise UpdateError(f"无法启动内置更新器: {exc}") from exc
+    return runner

@@ -22,7 +22,7 @@ ISAPI 实时读取设备数据，支持批量巡检 NVR 通道，也可以从摄
 - 支持并发查询、超时设置、任务取消、进度显示、运行日志和异常分类。
 - 支持导出 CSV 与 XLSX；导出的结果不包含 NVR 登录密码。
 - 设置页支持检查更新、下载 ZIP、SHA256 校验和自动替换便携目录。
-- 更新包由独立 `NVRUpdater.exe` 安装，主程序退出后自动重启。
+- `v1.0.2` 起使用程序内置更新器，不再依赖独立的 `NVRUpdater.exe`。
 
 ## 便携版使用
 
@@ -92,12 +92,13 @@ pip install -r requirements-build.txt
 
 ```text
 dist\NVR Assistant\NVR Assistant.exe
-dist\NVR Assistant\NVRUpdater.exe
 dist\NVRAssistant-windows-x64.zip
 dist\NVRAssistant-windows-x64.zip.sha256
 ```
 
 程序采用 PyInstaller `--onedir` 结构。更新时不能只替换主 EXE，应替换完整目录。
+安装更新时，主程序会把当前版本复制到临时目录，退出后由该临时副本下载并替换
+完整便携目录，因此不需要 `NVRUpdater.exe`。
 为兼容 `v1.0.0` 的旧更新助手，便携包内会保留一个 `NVRInspector.exe`
 兼容启动副本；日常使用和后续版本统一以 `NVR Assistant.exe` 为入口。
 
@@ -119,13 +120,16 @@ Releases API。发布新版本时按以下顺序操作：
 
 ```json
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/latest/download/NVRAssistant-windows-x64.zip",
-  "notes": "v1.0.1：修复查询和界面问题。",
+  "notes": "v1.0.2：自动更新改为程序内置，不再依赖 NVRUpdater.exe。",
   "published_at": "2026-10-16",
   "sha256": "填写 ZIP 的 SHA256"
 }
 ```
+
+`v1.0.2` 的更新程序包含在 `NVR Assistant.exe` 内。下载完成后，主程序会启动一个
+临时自更新副本，等待原程序退出后替换整个便携目录并自动重启。
 
 当前 `version.json` 中的 `sha256` 如果为空，程序仍会下载 ZIP 并执行 ZIP 完整性
 检查，但不会进行固定哈希校验。正式发布建议始终填写 SHA256。

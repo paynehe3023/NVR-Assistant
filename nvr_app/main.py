@@ -4,12 +4,16 @@ import ctypes
 import sys
 import traceback
 
+from pathlib import Path
+
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from nvr_app.logging_utils import configure_file_logging, get_logger
 from nvr_app.resources import resource_path
 from nvr_app.settings import APP_NAME, APPLICATION_NAME, ORGANIZATION_NAME
+from nvr_app.updater import cleanup_update_runners
 from nvr_app.ui.main_window import MainWindow
 from nvr_app.ui.theme import APP_STYLESHEET
 
@@ -62,6 +66,10 @@ def main() -> int:
 
     window = MainWindow()
     window.show()
+    QTimer.singleShot(
+        2000,
+        lambda: cleanup_update_runners(Path(sys.executable).parent),
+    )
     return app.exec()
 
 

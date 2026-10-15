@@ -335,8 +335,8 @@ class SettingsPage(QWidget):
                 "info",
             )
             return
-        self.update_status.setText("更新助手已启动，程序即将重启")
-        self.log_message.emit("更新助手已启动，程序即将重启", "success")
+        self.update_status.setText("内置更新器已启动，程序即将重启")
+        self.log_message.emit("内置更新器已启动，程序即将重启", "success")
         QTimer.singleShot(600, QApplication.instance().quit)
 
     def _cancel_update(self) -> None:
