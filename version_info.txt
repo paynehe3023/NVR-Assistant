@@ -20,7 +20,7 @@ VSVersionInfo(
             StringStruct(u'FileVersion', u'v1.0.4'),
             StringStruct(u'InternalName', u'NVR Assistant'),
             StringStruct(u'LegalCopyright', u'Copyright (C) 2026 payne'),
-            StringStruct(u'OriginalFilename', u'NVR.Assistant.exe'),
+            StringStruct(u'OriginalFilename', u'NVR Assistant.exe'),
             StringStruct(u'ProductName', u'NVR Assistant'),
             StringStruct(u'ProductVersion', u'v1.0.4')
           ]

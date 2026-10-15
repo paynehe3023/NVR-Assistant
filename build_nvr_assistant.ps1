@@ -12,9 +12,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "NVR Assistant build failed."
 }
 
-$mainExe = Join-Path $PSScriptRoot "dist\NVR.Assistant.exe"
+$mainExe = Join-Path $PSScriptRoot "dist\NVR Assistant.exe"
 if (-not (Test-Path -LiteralPath $mainExe)) {
-    throw "Standalone NVR.Assistant.exe was not generated."
+    throw "Standalone NVR Assistant.exe was not generated."
 }
 
 $sha256 = (Get-FileHash -LiteralPath $mainExe -Algorithm SHA256).Hash.ToLower()
