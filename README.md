@@ -21,16 +21,20 @@ ISAPI 实时读取设备数据，支持批量巡检 NVR 通道，也可以从摄
 - NVR 名称优先从设备接口读取；状态接口失败与设备离线会分别展示。
 - 支持并发查询、超时设置、任务取消、进度显示、运行日志和异常分类。
 - 支持导出 CSV 与 XLSX；导出的结果不包含 NVR 登录密码。
-- 设置页支持检查更新、下载 ZIP、SHA256 校验和自动替换当前单文件 EXE。
+- 设置页支持检查更新、直接下载 EXE、SHA256 校验和自动替换当前单文件 EXE。
 - `v1.0.2` 起使用程序内置更新器，不再依赖独立的 `NVRUpdater.exe`。
 
 ## 便携版使用
 
-1. 下载 Release 中的 `NVRAssistant-windows-x64.zip`。
-2. 解压后将 `NVR Assistant.exe` 放到任意可写目录。
-3. 运行 `NVR Assistant.exe`。
-4. `NVR Assistant.exe` 可以单独复制到桌面使用，不需要保留所在文件夹，
+1. 下载 Release 中的 `NVR.Assistant.exe`。
+2. 将 `NVR.Assistant.exe` 放到任意可写目录。
+3. 运行 `NVR.Assistant.exe`。
+4. `NVR.Assistant.exe` 可以单独复制到桌面使用，不需要保留所在文件夹，
    也不需要 `_internal` 目录。
+
+从 `v1.0.2` 或更早版本升级时，需要手动下载一次 `v1.0.4` 的
+`NVR.Assistant.exe` 并替换旧程序。旧版更新器只接受 ZIP，无法直接安装 EXE。
+完成这次手动替换后，后续版本可由程序内置更新器直接下载并替换 EXE。
 
 首次使用建议：
 
@@ -92,16 +96,13 @@ pip install -r requirements-build.txt
 构建结果：
 
 ```text
-dist\NVR Assistant.exe
-dist\NVRAssistant-windows-x64.zip
-dist\NVRAssistant-windows-x64.zip.sha256
+dist\NVR.Assistant.exe
+dist\NVR.Assistant.exe.sha256
 ```
 
-程序采用 PyInstaller 单文件结构。安装更新时，主程序会把当前 EXE 复制到临时目录，
-退出后由该临时副本下载并替换当前单文件 EXE，不会修改同目录中的其他文件，
-因此不需要 `NVRUpdater.exe`。
-为兼容 `v1.0.0` 的旧更新助手，便携包内会保留一个 `NVRInspector.exe`
-兼容启动副本；日常使用和后续版本统一以 `NVR Assistant.exe` 为入口。
+程序采用 PyInstaller 单文件结构。安装更新时，内置更新器会等待主程序退出，
+然后直接用下载并校验过的 `NVR.Assistant.exe` 替换当前单文件 EXE，不会修改
+同目录中的其他文件，因此不需要 `NVRUpdater.exe`。
 
 ## 更新与发布流程
 
@@ -110,30 +111,30 @@ Releases API。发布新版本时按以下顺序操作：
 
 1. 修改 `nvr_app/__init__.py` 中的 `__version__`。
 2. 同步修改 `version_info.txt`、`nvr_updater_version_info.txt` 和 `version.json`。
-3. 运行 `build_nvr_assistant.ps1` 生成 ZIP。
-4. 将 ZIP 的 SHA256 写入 `version.json`。
+3. 运行 `build_nvr_assistant.ps1` 生成 EXE。
+4. 将 EXE 的 SHA256 写入 `version.json`。
 5. 提交并推送 `main`。
 6. 创建对应版本标签和 GitHub Release。
-7. 上传 `NVRAssistant-windows-x64.zip`，文件名必须与 `version.json` 中的
+7. 上传 `NVR.Assistant.exe`，文件名必须与 `version.json` 中的
    `download_url` 完全一致。
 
 `version.json` 示例：
 
 ```json
 {
-  "version": "1.0.3",
-  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/latest/download/NVRAssistant-windows-x64.zip",
-  "notes": "v1.0.3：改为单文件 EXE，可脱离文件夹独立运行。",
+  "version": "1.0.4",
+  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/download/v1.0.4/NVR.Assistant.exe",
+  "notes": "v1.0.4：自动更新改为直接下载 NVR.Assistant.exe。",
   "published_at": "2026-10-15",
-  "sha256": "填写 ZIP 的 SHA256"
+  "sha256": "填写 EXE 的 SHA256"
 }
 ```
 
-更新程序包含在 `NVR Assistant.exe` 内。下载完成后，主程序会启动一个临时
+更新程序包含在 `NVR.Assistant.exe` 内。下载完成后，主程序会启动一个临时
 自更新副本，等待原程序退出后替换当前单文件 EXE 并自动重启。
 
-当前 `version.json` 中的 `sha256` 如果为空，程序仍会下载 ZIP 并执行 ZIP 完整性
-检查，但不会进行固定哈希校验。正式发布建议始终填写 SHA256。
+当前 `version.json` 中的 `sha256` 如果为空，程序仍会检查 EXE 文件头，但不会
+进行固定哈希校验。正式发布建议始终填写 SHA256。
 
 ## 安全说明
 

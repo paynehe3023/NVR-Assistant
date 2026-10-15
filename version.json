@@ -1,7 +1,7 @@
 {
-  "version": "1.0.3",
-  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/latest/download/NVRAssistant-windows-x64.zip",
-  "notes": "v1.0.3：改为单文件 EXE，可脱离文件夹独立运行；内置更新器支持单文件原地替换，不再依赖 NVRUpdater.exe。",
+  "version": "1.0.4",
+  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/download/v1.0.4/NVR.Assistant.exe",
+  "notes": "v1.0.4：自动更新改为直接下载 NVR.Assistant.exe，并在退出后原地替换当前程序。",
   "published_at": "2026-10-15",
-  "sha256": "6e703cd599b38c05bc02893d43f38e4e752519049277dc3578515c5616297636"
+  "sha256": "20eba566f77a93b61f87c3855d43a3e1734d320996002c8a0429376516c5af1d"
 }

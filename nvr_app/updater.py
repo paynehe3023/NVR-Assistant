@@ -29,9 +29,13 @@ RELEASE_API_URL = (
 USER_AGENT = "nvr-assistant-updater"
 HTTP_TIMEOUT = 20
 CHUNK_SIZE = 256 * 1024
-APP_EXE_NAME = "NVR Assistant.exe"
+APP_EXE_NAME = "NVR.Assistant.exe"
+LEGACY_APP_EXE_NAMES = ("NVR Assistant.exe",)
+PAYLOAD_EXE_NAMES = (APP_EXE_NAME, *LEGACY_APP_EXE_NAMES)
 UPDATE_MODE_ONEFILE = "onefile"
 UPDATE_MODE_ONEDIR = "onedir"
+PAYLOAD_ZIP = "zip"
+PAYLOAD_EXE = "exe"
 
 
 class UpdateError(RuntimeError):
@@ -137,14 +141,21 @@ def _manifest_from_version_json(payload: dict) -> UpdateInfo:
 def _manifest_from_release(payload: dict) -> UpdateInfo:
     version = str(payload.get("tag_name") or payload.get("name") or "").strip()
     assets = payload.get("assets") or []
-    zip_assets = [
+    download_assets = [
         asset
         for asset in assets
-        if str(asset.get("name") or "").lower().endswith(".zip")
+        if str(asset.get("name") or "").lower().endswith((".zip", ".exe"))
     ]
-    asset = zip_assets[0] if zip_assets else None
+    exe_assets = [
+        asset
+        for asset in download_assets
+        if str(asset.get("name") or "").lower().endswith(".exe")
+    ]
+    asset = exe_assets[0] if exe_assets else (
+        download_assets[0] if download_assets else None
+    )
     if not version or not asset:
-        raise UpdateError("GitHub Release 缺少版本标签或 ZIP 资产")
+        raise UpdateError("GitHub Release 缺少版本标签或 EXE/ZIP 资产")
     return UpdateInfo(
         version=version,
         download_url=str(asset.get("browser_download_url") or "").strip(),
@@ -199,9 +210,20 @@ def _update_dir() -> Path:
 def _download_name(url: str) -> str:
     name = unquote(urlparse(url).path.rsplit("/", 1)[-1])
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip()
-    if not name.lower().endswith(".zip"):
-        name = "NVRAssistant-update.zip"
-    return name
+    return name or "NVRAssistant-update"
+
+
+def _update_payload_kind(path: Path) -> str:
+    try:
+        with open(path, "rb") as source:
+            signature = source.read(2)
+    except OSError as exc:
+        raise UpdateError(f"无法读取更新文件: {exc}") from exc
+    if signature == b"MZ":
+        return PAYLOAD_EXE
+    if signature == b"PK":
+        return PAYLOAD_ZIP
+    raise UpdateError("更新文件不是有效的 EXE 或 ZIP")
 
 
 def download_update(
@@ -211,7 +233,7 @@ def download_update(
     progress=None,
     cancel_event=None,
 ) -> Path:
-    """Download a release ZIP and verify it before returning its path."""
+    """Download a release EXE or ZIP and verify it before returning its path."""
     target = _update_dir() / _download_name(url)
     part = target.with_suffix(target.suffix + ".part")
     part.unlink(missing_ok=True)
@@ -249,7 +271,7 @@ def download_update(
         if exc.code == 404:
             raise UpdateError(
                 "下载地址不存在（HTTP 404）：请确认 GitHub Release "
-                "已上传 ZIP，且 version.json 的 download_url 指向该文件"
+                "已上传更新文件，且 version.json 的 download_url 指向该文件"
             ) from exc
         raise UpdateError(f"下载更新失败: HTTP {exc.code}") from exc
     except (URLError, TimeoutError, OSError) as exc:
@@ -266,13 +288,18 @@ def download_update(
         raise UpdateError("更新文件校验失败，已删除下载内容")
 
     try:
-        with ZipFile(part) as archive:
-            bad_file = archive.testzip()
-            if bad_file:
-                raise UpdateError(f"更新包解压校验失败: {bad_file}")
+        payload_kind = _update_payload_kind(part)
+        if payload_kind == PAYLOAD_ZIP:
+            with ZipFile(part) as archive:
+                bad_file = archive.testzip()
+                if bad_file:
+                    raise UpdateError(f"更新包解压校验失败: {bad_file}")
+    except UpdateError:
+        part.unlink(missing_ok=True)
+        raise
     except (BadZipFile, OSError) as exc:
         part.unlink(missing_ok=True)
-        raise UpdateError("下载内容不是有效的更新 ZIP 包") from exc
+        raise UpdateError("下载内容不是有效的更新文件") from exc
 
     os.replace(part, target)
     _emit(
@@ -363,8 +390,19 @@ def _find_payload_root(extracted_dir: Path) -> Path:
         if child.is_dir()
     )
     for candidate in candidates:
-        if (candidate / APP_EXE_NAME).is_file():
+        if any(
+            (candidate / name).is_file()
+            for name in PAYLOAD_EXE_NAMES
+        ):
             return candidate
+    raise UpdateError(f"更新包中找不到 {APP_EXE_NAME}")
+
+
+def _find_payload_executable(payload_root: Path) -> Path:
+    for name in PAYLOAD_EXE_NAMES:
+        executable = payload_root / name
+        if executable.is_file():
+            return executable
     raise UpdateError(f"更新包中找不到 {APP_EXE_NAME}")
 
 
@@ -453,8 +491,9 @@ def apply_update(
     parent_pid: int,
     restart: bool,
     mode: str | None = None,
+    target_exe_name: str | None = None,
 ) -> None:
-    """Install a verified ZIP after the parent process has exited."""
+    """Install a verified EXE or ZIP after the parent process has exited."""
     archive_path = Path(archive_path).resolve()
     target_dir = Path(target_dir).resolve()
     update_mode = _normalize_update_mode(mode) or _detect_update_mode(
@@ -462,9 +501,16 @@ def apply_update(
     )
     if not archive_path.is_file():
         raise UpdateError("更新包不存在")
-    target_exe = target_dir / APP_EXE_NAME
+    payload_kind = _update_payload_kind(archive_path)
+    resolved_target_name = str(target_exe_name or APP_EXE_NAME).strip()
+    if (
+        not resolved_target_name
+        or Path(resolved_target_name).name != resolved_target_name
+    ):
+        raise UpdateError("目标程序文件名无效")
+    target_exe = target_dir / resolved_target_name
     if not target_exe.is_file():
-        raise UpdateError(f"目标目录中没有 {APP_EXE_NAME}")
+        raise UpdateError(f"目标目录中没有 {resolved_target_name}")
 
     token = uuid.uuid4().hex
     staging = target_dir.parent / f".{target_dir.name}.update-{token}"
@@ -474,12 +520,21 @@ def apply_update(
 
     try:
         _wait_for_process_exit(parent_pid)
-        _safe_extract(archive_path, staging)
-        payload = _find_payload_root(staging)
-        if update_mode == UPDATE_MODE_ONEFILE:
-            _replace_file(payload / APP_EXE_NAME, target_exe, token)
+        if payload_kind == PAYLOAD_EXE:
+            staged_exe = staging / resolved_target_name
+            shutil.copy2(archive_path, staged_exe)
+            _replace_file(staged_exe, target_exe, token)
         else:
-            _replace_directory(payload, target_dir, token)
+            _safe_extract(archive_path, staging)
+            payload = _find_payload_root(staging)
+            if update_mode == UPDATE_MODE_ONEFILE:
+                _replace_file(
+                    _find_payload_executable(payload),
+                    target_exe,
+                    token,
+                )
+            else:
+                _replace_directory(payload, target_dir, token)
     finally:
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
@@ -558,7 +613,7 @@ def prepare_update_runner(
 def run_update_helper(argv: list[str] | None = None) -> int:
     """Run the built-in installer mode used by the temporary self-copy."""
     args = list(sys.argv if argv is None else argv)
-    if len(args) not in (6, 7) or args[1] != "--apply-update":
+    if len(args) not in (6, 7, 8) or args[1] != "--apply-update":
         return 2
 
     try:
@@ -566,8 +621,16 @@ def run_update_helper(argv: list[str] | None = None) -> int:
         target_dir = Path(args[3])
         parent_pid = int(args[4])
         restart = args[5] == "--restart"
-        mode = args[6] if len(args) == 7 else None
-        apply_update(archive_path, target_dir, parent_pid, restart, mode)
+        mode = args[6] if len(args) >= 7 else None
+        target_exe_name = args[7] if len(args) == 8 else None
+        apply_update(
+            archive_path,
+            target_dir,
+            parent_pid,
+            restart,
+            mode,
+            target_exe_name,
+        )
         _write_update_log("内置更新完成")
         return 0
     except Exception as exc:
@@ -590,7 +653,8 @@ def launch_update(downloaded_archive: Path) -> Path | None:
         except OSError as exc:
             raise UpdateError(f"无法打开更新目录: {exc}") from exc
 
-    target_dir = Path(sys.executable).resolve().parent
+    target_exe = Path(sys.executable).resolve()
+    target_dir = target_exe.parent
     mode = _detect_update_mode(target_dir)
     runner = prepare_update_runner(target_dir, mode)
 
@@ -604,6 +668,7 @@ def launch_update(downloaded_archive: Path) -> Path | None:
                 str(os.getpid()),
                 "--restart",
                 mode,
+                target_exe.name,
             ],
             cwd=str(runner.parent),
             close_fds=True,

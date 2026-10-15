@@ -9,11 +9,14 @@ from zipfile import ZipFile
 
 from nvr_app.updater import (
     UpdateError,
+    _manifest_from_release,
     _manifest_from_version_json,
+    _update_payload_kind,
     _version_key,
     apply_update,
     check_for_update,
     cleanup_update_runners,
+    download_update,
     is_newer,
     launch_update,
     prepare_update_runner,
@@ -32,7 +35,7 @@ class UpdaterTests(unittest.TestCase):
         info = _manifest_from_version_json(
             {
                 "version": "1.1.0",
-                "download_url": "https://example.com/app.zip",
+                "download_url": "https://example.com/NVR.Assistant.exe",
                 "notes": "test",
                 "published_at": "2026-10-15",
                 "sha256": "sha256:" + "a" * 64,
@@ -41,6 +44,31 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(info.version, "1.1.0")
         self.assertEqual(info.sha256, "a" * 64)
         self.assertEqual(info.notes, "test")
+
+    def test_release_manifest_prefers_direct_executable(self):
+        info = _manifest_from_release(
+            {
+                "tag_name": "v1.0.4",
+                "assets": [
+                    {
+                        "name": "NVRAssistant-windows-x64.zip",
+                        "browser_download_url": "https://example.com/app.zip",
+                    },
+                    {
+                        "name": "NVR.Assistant.exe",
+                        "browser_download_url": (
+                            "https://example.com/NVR.Assistant.exe"
+                        ),
+                        "digest": "sha256:" + "b" * 64,
+                    },
+                ],
+            }
+        )
+        self.assertEqual(
+            info.download_url,
+            "https://example.com/NVR.Assistant.exe",
+        )
+        self.assertEqual(info.sha256, "b" * 64)
 
     def test_check_for_update_reads_local_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -104,6 +132,7 @@ class UpdaterTests(unittest.TestCase):
                 parent_pid=0,
                 restart=False,
                 mode="onedir",
+                target_exe_name="NVR Assistant.exe",
             )
 
             self.assertEqual(
@@ -115,6 +144,70 @@ class UpdaterTests(unittest.TestCase):
             self.assertFalse((target / "_internal" / "old.dll").exists())
             self.assertFalse((target / "old.txt").exists())
             self.assertFalse((target / "NVRUpdater.exe").exists())
+
+    def test_apply_update_replaces_direct_executable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target_dir = root / "Desktop"
+            target_dir.mkdir()
+            target_exe = target_dir / "NVR.Assistant.exe"
+            target_exe.write_bytes(b"MZold")
+            (target_dir / "user-notes.txt").write_text(
+                "keep",
+                encoding="utf-8",
+            )
+
+            downloaded = root / "NVR.Assistant.exe"
+            downloaded.write_bytes(b"MZnew")
+
+            apply_update(
+                downloaded,
+                target_dir,
+                parent_pid=0,
+                restart=False,
+                mode="onefile",
+                target_exe_name="NVR.Assistant.exe",
+            )
+
+            self.assertEqual(target_exe.read_bytes(), b"MZnew")
+            self.assertEqual(
+                (target_dir / "user-notes.txt").read_text(encoding="utf-8"),
+                "keep",
+            )
+
+    def test_download_update_accepts_direct_executable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "NVR.Assistant.exe"
+            source.write_bytes(b"MZdownloaded")
+            update_dir = root / "updates"
+            update_dir.mkdir()
+
+            with patch(
+                "nvr_app.updater._update_dir",
+                return_value=update_dir,
+            ):
+                downloaded = download_update(source.as_uri())
+
+            self.assertEqual(downloaded.name, "NVR.Assistant.exe")
+            self.assertEqual(downloaded.read_bytes(), b"MZdownloaded")
+            self.assertEqual(
+                _update_payload_kind(downloaded),
+                "exe",
+            )
+
+    def test_download_update_rejects_invalid_payload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "NVR.Assistant.exe"
+            source.write_bytes(b"not-an-executable")
+
+            with patch(
+                "nvr_app.updater._update_dir",
+                return_value=root / "updates",
+            ):
+                with self.assertRaises(UpdateError):
+                    download_update(source.as_uri())
 
     def test_apply_update_replaces_only_onefile_executable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -140,6 +233,7 @@ class UpdaterTests(unittest.TestCase):
                 parent_pid=0,
                 restart=False,
                 mode="onefile",
+                target_exe_name="NVR Assistant.exe",
             )
 
             self.assertEqual(target_exe.read_bytes(), b"new")
@@ -172,6 +266,7 @@ class UpdaterTests(unittest.TestCase):
                 parent_pid=0,
                 restart=False,
                 mode="onefile",
+                target_exe_name="NVR Assistant.exe",
             )
 
             self.assertEqual(target_exe.read_bytes(), b"new")
@@ -270,7 +365,8 @@ class UpdaterTests(unittest.TestCase):
             self.assertEqual(command[1], "--apply-update")
             self.assertEqual(command[2], str(archive))
             self.assertEqual(command[3], str(target))
-            self.assertEqual(command[-1], "onefile")
+            self.assertEqual(command[-2], "onefile")
+            self.assertEqual(command[-1], "NVR Assistant.exe")
             self.assertNotIn("NVRUpdater.exe", " ".join(command))
 
     def test_cleanup_update_runners_removes_only_runner_dirs(self):
