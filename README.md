@@ -1,1 +1,145 @@
-# NVR-Assistant
+<div align="center">
+  <img src="image/NvrAssistantLogo.png" alt="NVR Assistant" width="112">
+  <h1>NVR Assistant</h1>
+  <p>Windows 本地 NVR 巡检与摄像头反查工具</p>
+</div>
+
+## 项目简介
+
+NVR Assistant 是一个面向海康威视 NVR 与摄像头的本地桌面工具。它通过
+ISAPI 实时读取设备数据，支持批量巡检 NVR 通道，也可以从摄像头 IP 反向定位
+所属 NVR、通道号和通道名称。
+
+项目使用 Python 与 PySide6 开发，发布形式为 Windows `onedir` 便携包。程序不
+依赖服务器，不上传设备清单，也不内置任何 NVR 或摄像头凭据。
+
+## 主要功能
+
+- NVR 巡检支持 CSV 批量、单个 NVR 和多个 NVR 管理地址输入。
+- 摄像头反查只以用户输入的摄像头 IP 或 CSV 为起点，实时查询 NVR，不读取
+  `NVR_devices.py` 的历史报表、缓存或运行结果。
+- NVR 名称优先从设备接口读取；状态接口失败与设备离线会分别展示。
+- 支持并发查询、超时设置、任务取消、进度显示、运行日志和异常分类。
+- 支持导出 CSV 与 XLSX；导出的结果不包含 NVR 登录密码。
+- 设置页支持检查更新、下载 ZIP、SHA256 校验和自动替换便携目录。
+- 更新包由独立 `NVRUpdater.exe` 安装，主程序退出后自动重启。
+
+## 便携版使用
+
+1. 下载 Release 中的 `NVRAssistant-windows-x64.zip`。
+2. 解压到可写目录，例如 `D:\Tools\NVRInspector`。
+3. 运行 `NVRInspector.exe`。
+4. 不要只复制单个 EXE；程序是 `onedir` 结构，需要保留完整目录。
+
+首次使用建议：
+
+1. 在“NVR 巡检”页选择或输入 NVR 管理地址。
+2. 在“摄像头反查”页输入摄像头 IP，并选择 NVR 清单 CSV。
+3. 查询结果可点击统计卡片筛选，并导出 CSV 或 XLSX。
+
+## 数据文件格式
+
+### NVR 清单 CSV
+
+摄像头反查必须提供 NVR 清单。最少需要以下三列：
+
+```csv
+ip,username,password
+192.168.1.10,admin,example-password
+192.168.1.11,admin,example-password
+```
+
+`ip` 是 NVR 管理地址，`username` 和 `password` 用于登录 NVR ISAPI。密码只在
+本次运行中使用，不写入设置和导出结果。
+
+### 摄像头 CSV
+
+摄像头 CSV 只要求摄像头 IP 列，推荐使用 `camera_ip`：
+
+```csv
+camera_ip
+10.0.0.10
+10.0.0.11
+10.0.0.12
+```
+
+如果原来的摄像头 CSV 中存在摄像头密码列，程序会忽略该列，也不会记录密码。
+
+## 开发运行
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-gui.txt
+python nvr_assistant.py
+```
+
+运行测试：
+
+```powershell
+$env:QT_QPA_PLATFORM = "offscreen"
+python -m unittest discover -s tests -v
+```
+
+## 构建 Windows 便携包
+
+```powershell
+pip install -r requirements-build.txt
+.\build_nvr_assistant.ps1
+```
+
+构建结果：
+
+```text
+dist\NVRInspector\NVRInspector.exe
+dist\NVRInspector\NVRUpdater.exe
+dist\NVRAssistant-windows-x64.zip
+dist\NVRAssistant-windows-x64.zip.sha256
+```
+
+程序采用 PyInstaller `--onedir` 结构。更新时不能只替换主 EXE，应替换完整目录。
+
+## 更新与发布流程
+
+主程序从 GitHub Raw 读取根目录 `version.json`，在清单不存在时回退到 GitHub
+Releases API。发布新版本时按以下顺序操作：
+
+1. 修改 `nvr_app/__init__.py` 中的 `__version__`。
+2. 同步修改 `version_info.txt`、`nvr_updater_version_info.txt` 和 `version.json`。
+3. 运行 `build_nvr_assistant.ps1` 生成 ZIP。
+4. 将 ZIP 的 SHA256 写入 `version.json`。
+5. 提交并推送 `main`。
+6. 创建对应版本标签和 GitHub Release。
+7. 上传 `NVRAssistant-windows-x64.zip`，文件名必须与 `version.json` 中的
+   `download_url` 完全一致。
+
+`version.json` 示例：
+
+```json
+{
+  "version": "1.0.1",
+  "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/latest/download/NVRAssistant-windows-x64.zip",
+  "notes": "v1.0.1：修复查询和界面问题。",
+  "published_at": "2026-10-16",
+  "sha256": "填写 ZIP 的 SHA256"
+}
+```
+
+当前 `version.json` 中的 `sha256` 如果为空，程序仍会下载 ZIP 并执行 ZIP 完整性
+检查，但不会进行固定哈希校验。正式发布建议始终填写 SHA256。
+
+## 安全说明
+
+- 仓库不得提交 `.env`、真实 NVR CSV、真实摄像头 CSV、导出结果、日志或证书。
+- 仓库只保留 `NVRdevices.example.csv` 和 `cameras.example.csv` 等无敏感值模板。
+- 曾在 Git 历史中出现过的密码应立即轮换，删除文件本身不能消除泄露风险。
+- 摄像头反查不需要摄像头密码；NVR 登录密码只由用户在本地运行时提供。
+
+## 作者
+
+payne
+
+## 许可证
+
+当前仓库未附加单独的许可证文件。如需对外授予复制、修改或分发权限，应补充
+明确的 LICENSE 文件。
