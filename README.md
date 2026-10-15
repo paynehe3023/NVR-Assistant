@@ -27,8 +27,8 @@ ISAPI 实时读取设备数据，支持批量巡检 NVR 通道，也可以从摄
 ## 便携版使用
 
 1. 下载 Release 中的 `NVRAssistant-windows-x64.zip`。
-2. 解压到可写目录，例如 `D:\Tools\NVRInspector`。
-3. 运行 `NVRInspector.exe`。
+2. 解压到可写目录，例如 `D:\Tools\NVR Assistant`。
+3. 运行 `NVR Assistant.exe`。
 4. 不要只复制单个 EXE；程序是 `onedir` 结构，需要保留完整目录。
 
 首次使用建议：
@@ -91,13 +91,15 @@ pip install -r requirements-build.txt
 构建结果：
 
 ```text
-dist\NVRInspector\NVRInspector.exe
-dist\NVRInspector\NVRUpdater.exe
+dist\NVR Assistant\NVR Assistant.exe
+dist\NVR Assistant\NVRUpdater.exe
 dist\NVRAssistant-windows-x64.zip
 dist\NVRAssistant-windows-x64.zip.sha256
 ```
 
 程序采用 PyInstaller `--onedir` 结构。更新时不能只替换主 EXE，应替换完整目录。
+为兼容 `v1.0.0` 的旧更新助手，便携包内会保留一个 `NVRInspector.exe`
+兼容启动副本；日常使用和后续版本统一以 `NVR Assistant.exe` 为入口。
 
 ## 更新与发布流程
 

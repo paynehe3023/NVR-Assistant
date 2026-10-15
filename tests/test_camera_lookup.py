@@ -16,6 +16,7 @@ from camera_lookup import (
     parse_channel_status,
     parse_input_proxy_channels,
 )
+from nvr_app.services.isapi_compat import IsapiCancelled, IsapiResult
 
 
 CONFIG_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -164,6 +165,58 @@ class CameraLookupTests(unittest.TestCase):
             return FakeResponse()
 
         requests_get.side_effect = fake_get
+
+        with self.assertRaises(LookupCancelled):
+            fetch_nvr_channels(
+                {
+                    "ip": "192.168.1.10",
+                    "username": "admin",
+                    "password": "secret",
+                },
+                cancel_event=cancel_event,
+            )
+
+    @patch("camera_lookup.fetch_device_name", return_value="总部NVR")
+    @patch("camera_lookup.request_isapi")
+    def test_fetch_nvr_channels_resolves_missing_device_name(
+        self,
+        request_isapi,
+        fetch_device_name,
+    ):
+        request_isapi.side_effect = [
+            IsapiResult(content=CONFIG_XML.encode("utf-8")),
+            IsapiResult(content=STATUS_XML.encode("utf-8")),
+        ]
+
+        result = fetch_nvr_channels(
+            {
+                "ip": "192.168.1.10",
+                "username": "admin",
+                "password": "secret",
+            }
+        )
+
+        self.assertEqual(result["nvr_name"], "总部NVR")
+        fetch_device_name.assert_called_once()
+
+    @patch("camera_lookup.fetch_device_name")
+    @patch("camera_lookup.request_isapi")
+    def test_fetch_nvr_channels_propagates_cancellation_during_device_name(
+        self,
+        request_isapi,
+        fetch_device_name,
+    ):
+        request_isapi.side_effect = [
+            IsapiResult(content=CONFIG_XML.encode("utf-8")),
+            IsapiResult(content=STATUS_XML.encode("utf-8")),
+        ]
+        cancel_event = threading.Event()
+
+        def fake_fetch_device_name(*args, **kwargs):
+            cancel_event.set()
+            raise IsapiCancelled("查询已取消")
+
+        fetch_device_name.side_effect = fake_fetch_device_name
 
         with self.assertRaises(LookupCancelled):
             fetch_nvr_channels(

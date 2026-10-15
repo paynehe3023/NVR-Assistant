@@ -9,7 +9,11 @@ import os
 import xml.etree.ElementTree as ET
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
-from nvr_app.services.isapi_compat import IsapiCancelled, request_isapi
+from nvr_app.services.isapi_compat import (
+    IsapiCancelled,
+    fetch_device_name,
+    request_isapi,
+)
 from nvr_app.services.nvr_scan_service import (
     load_nvr_devices as _load_nvr_devices,
 )
@@ -295,6 +299,23 @@ def fetch_nvr_channels(nvr, timeout=8, cancel_event=None):
         result["channels"] = list(channels.values())
     else:
         result["error"] = "；".join(errors) or "未发现任何通道"
+
+    if result["channels"] and (not nvr_name or nvr_name.startswith("NVR ")):
+        try:
+            resolved_name = fetch_device_name(
+                nvr_ip,
+                username,
+                password,
+                timeout=timeout,
+                cancel_event=cancel_event,
+            )
+        except IsapiCancelled as exc:
+            raise LookupCancelled(str(exc)) from exc
+        except Exception:
+            # 名称是补充信息，读取失败不应让通道查询整体失败。
+            resolved_name = ""
+        if resolved_name:
+            result["nvr_name"] = resolved_name
 
     return result
 

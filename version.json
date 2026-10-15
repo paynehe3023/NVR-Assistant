@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "download_url": "https://github.com/paynehe3023/NVR-Assistant/releases/latest/download/NVRAssistant-windows-x64.zip",
-  "notes": "v1.0.0：首个正式版本，支持 NVR 巡检、摄像头反查、运行日志和版本更新检查。",
+  "notes": "v1.0.1：修复摄像头反查 NVR 名称，统一主程序名称为 NVR Assistant。",
   "published_at": "2026-10-15",
-  "sha256": "1e06853a0f8dad5e7f1cda48025bcfb3eed72236e7c0ae7e3dc566cf5b838b6e"
+  "sha256": "7f336bbff48eb9b7de57be75b2da305feb9abe60d41119174943c5651cf9f041"
 }

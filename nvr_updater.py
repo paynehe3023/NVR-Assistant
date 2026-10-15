@@ -11,7 +11,7 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 
-APP_EXE_NAME = "NVRInspector.exe"
+APP_EXE_NAME = "NVR Assistant.exe"
 
 
 class UpdaterError(RuntimeError):

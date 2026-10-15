@@ -29,10 +29,18 @@ STATUS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 </InputProxyChannelStatusList>
 """
 
+DEVICE_INFO_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<DeviceInfo xmlns="http://www.hikvision.com/ver20/XMLSchema">
+  <deviceName>测试NVR</deviceName>
+</DeviceInfo>
+"""
+
 
 class FakeIsapiHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.endswith("/channels/status"):
+        if self.path.endswith("/System/deviceInfo"):
+            content = DEVICE_INFO_XML.encode("utf-8")
+        elif self.path.endswith("/channels/status"):
             content = STATUS_XML.encode("utf-8")
         else:
             content = CONFIG_XML.encode("utf-8")
@@ -76,6 +84,10 @@ class CameraLookupHttpTests(unittest.TestCase):
 
         self.assertTrue(
             result["results"][0]["matches"][0]["nvr_ip"].startswith("127.0.0.1:")
+        )
+        self.assertEqual(
+            result["results"][0]["matches"][0]["nvr_name"],
+            "测试NVR",
         )
         self.assertEqual(events[-1]["phase"], "finished")
 

@@ -90,7 +90,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="NVRInspector",
+    name="NVR Assistant",
     debug=False,
     icon=icon_path,
     bootloader_ignore_signals=False,
@@ -112,6 +112,6 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="NVRInspector",
+    name="NVR Assistant",
 )
 
